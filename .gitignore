@@ -20,6 +20,7 @@ signPri*
 # 개인 환경 정보가 담긴 로컬 문서 (공개 저장소에 올리지 않음)
 CLAUDE.md
 SETUP_GUIDE.md
+PROJECT_LINKS.md
 .claude/
 
 # 기타
