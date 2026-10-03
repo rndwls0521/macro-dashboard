@@ -413,6 +413,12 @@ window.addEventListener("resize", () => {
 });
 
 if ("serviceWorker" in navigator) {
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  // 새 버전 서비스워커가 적용되면 한 번만 새로고침해 최신 화면을 띄운다 (첫 설치 때는 제외)
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (hadController && !reloaded) { reloaded = true; location.reload(); }
+  });
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 }
 
