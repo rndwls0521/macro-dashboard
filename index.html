@@ -4,17 +4,70 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="매크로">
+<meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
+<meta name="robots" content="noindex">
 <title>매크로 대시보드</title>
-<style>
-  :root { --bg: #ffffff; --fg: #1a1a1a; --muted: #666; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #111; --fg: #eee; --muted: #999; } }
-  body { margin: 0; padding: 24px 16px; background: var(--bg); color: var(--fg);
-         font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif; }
-  p { color: var(--muted); }
-</style>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h1>매크로 대시보드</h1>
-  <p>준비 중입니다. (배포 확인용 임시 페이지)</p>
+<header class="topbar">
+  <div class="topbar-row">
+    <h1 id="page-title">매크로 지표</h1>
+    <button class="icon-btn" id="refresh" type="button" aria-label="최신 데이터 다시 불러오기">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+    </button>
+  </div>
+  <p class="asof" id="asof">불러오는 중…</p>
+</header>
+
+<section id="view-dash">
+  <div class="filters" role="group" aria-label="국가 필터">
+    <button class="chip" type="button" data-country="ALL" aria-pressed="true">전체</button>
+    <button class="chip" type="button" data-country="KR" aria-pressed="false">한국</button>
+    <button class="chip" type="button" data-country="US" aria-pressed="false">미국</button>
+  </div>
+  <main id="dash"></main>
+  <main>
+    <p class="note">
+      자동 갱신 없음 · 데이터는 요청할 때만 갱신됩니다. 새로고침 버튼은 마지막으로 수집된 데이터를 다시 불러옵니다.<br>
+      출처: 한국은행 ECOS, 미 세인트루이스 연준 FRED. 지표마다 발표 주기가 달라 기준일이 다를 수 있습니다.
+      이 앱은 정보 제공용이며 투자 권유가 아닙니다.
+    </p>
+  </main>
+</section>
+
+<section id="view-brief" hidden>
+  <main id="brief"></main>
+</section>
+
+<nav class="tabbar" role="tablist" aria-label="화면 전환">
+  <button type="button" role="tab" data-view="dash" aria-selected="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>
+    지표
+  </button>
+  <button type="button" role="tab" data-view="brief" aria-selected="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+    브리핑
+  </button>
+</nav>
+
+<dialog class="sheet" id="sheet" aria-labelledby="sheet-title">
+  <div class="sheet-head">
+    <button class="icon-btn" type="button" id="sheet-close" aria-label="닫기">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <h2 id="sheet-title"></h2>
+  </div>
+  <div class="sheet-body" id="sheet-body"></div>
+</dialog>
+
+<script src="app.js"></script>
 </body>
 </html>
