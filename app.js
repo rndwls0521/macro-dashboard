@@ -230,6 +230,12 @@ function openDetail(s) {
   );
 
   body.append(rangeRow, chartCard, tableBtn, tableWrap, meta);
+  relatedTermsFor(s.id).then((ts) => {
+    if (!ts.length || !$("#sheet").open) return;
+    const row = el("div", { class: "ranges" });
+    for (const t of ts) row.append(termChip(t, () => openTerm(t)));
+    body.append(el("dt", { class: "meta-h", text: "관련 용어" }), row);
+  });
   dlg.showModal();
   update();
 }
@@ -342,22 +348,30 @@ function drawChart(card, pts, s) {
   root.addEventListener("blur", hide);
 }
 
-// ── 브리핑 ──
+// ── 브리핑 (요청 시 작성, data/briefings/에 날짜별 보관) ──
 const TAG = { fact: "사실", forecast: "전망", opinion: "해석" };
 
-async function renderBrief() {
+async function getJSON(path) {
+  try {
+    const res = await fetch(`${path}?t=${Date.now()}`, { cache: "no-store" });
+    return res.ok ? await res.json() : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function renderBrief(file) {
   const root = $("#brief");
   root.replaceChildren(el("p", { class: "note", text: "불러오는 중…" }));
-  let b = null;
-  try {
-    const res = await fetch(`data/briefing.json?t=${Date.now()}`, { cache: "no-store" });
-    if (res.ok) b = await res.json();
-  } catch (_) { /* 오프라인 */ }
+  const index = await getJSON("data/briefings/index.json");
+  const list = (index?.briefings || []).slice().sort((a, b) => (a.date < b.date ? 1 : -1));
+  const target = file || list[0]?.file;
+  const b = target ? await getJSON(`data/briefings/${target}`) : null;
   root.replaceChildren();
   if (!b) {
     root.append(el("div", { class: "empty" },
       el("h3", { text: "아직 브리핑이 없습니다" }),
-      el("p", { text: "Claude에게 \"매크로 브리핑 작성해줘\"라고 요청하면, 그 시점의 데이터로 작성해 이곳에 올립니다. 자동으로 생성되지 않습니다." })));
+      el("p", { text: "Claude에게 \"오늘 브리핑 작성해줘\"라고 요청하면, 그 시점의 뉴스·데이터로 작성해 이곳에 올립니다. 자동으로 생성되지 않습니다." })));
     return;
   }
   root.append(
@@ -381,28 +395,151 @@ async function renderBrief() {
     }
     root.append(card);
   }
-  root.append(el("p", { class: "note", text: "브리핑은 정보 제공용이며, 최종 투자 판단은 본인에게 있습니다." }));
+  root.append(el("p", { class: "note", text: "브리핑은 정보 제공용 일반 시장 관점이며, 개인 자산에 대한 권유가 아닙니다. 최종 투자 판단은 본인에게 있습니다." }));
+  if (list.length > 1) {
+    root.append(el("h2", { class: "section-title", text: "지난 브리핑" }));
+    const box = el("div", { class: "brief-card list" });
+    for (const it of list) {
+      box.append(el("button", { class: "list-row", type: "button", "aria-current": String(it.file === target),
+        onclick: () => { renderBrief(it.file); window.scrollTo(0, 0); } },
+        el("span", { text: it.title || "매크로 브리핑" }), el("span", { class: "muted", text: it.date })));
+    }
+    root.append(box);
+  }
+}
+
+// ── 학습 (용어사전 + Claude에게 묻기) ──
+let glossaryCache = null;
+async function glossary() {
+  if (!glossaryCache) glossaryCache = await getJSON("data/glossary.json");
+  return glossaryCache;
+}
+
+function askClaude(question) {
+  const q = `[경제 공부 질문] ${question}\n\n초보자도 이해할 수 있게 설명해 주세요. 사실·전망·해석을 구분하고, 가능하면 출처와 기준 시점을 밝혀 주세요. 투자 권유가 아닌 학습 목적입니다.`;
+  try { navigator.clipboard?.writeText(q); } catch (_) { /* 권한 없음 */ }
+  window.open(`https://claude.ai/new?q=${encodeURIComponent(q)}`, "_blank", "noopener");
+}
+
+function termChip(t, onclick) {
+  return el("button", { class: "chip", type: "button", text: t.term, onclick });
+}
+
+async function renderLearn() {
+  const root = $("#learn");
+  const g = await glossary();
+  root.replaceChildren();
+  if (!g) {
+    root.append(el("p", { class: "note", text: "용어사전을 불러오지 못했습니다. 네트워크를 확인해 주세요." }));
+    return;
+  }
+  const terms = g.terms;
+
+  // 질문하기
+  const input = el("textarea", { class: "ask-input", rows: "2", placeholder: "궁금한 경제 개념을 적어 보세요 (예: 금리가 오르면 왜 주가가 떨어지나요?)" });
+  root.append(el("div", { class: "brief-card" },
+    el("h3", { text: "Claude에게 물어보기" }),
+    input,
+    el("button", { class: "update-btn", type: "button", style: "margin-top:8px;width:100%;border:0;cursor:pointer",
+      onclick: () => { if (input.value.trim()) askClaude(input.value.trim()); else input.focus(); } },
+      document.createTextNode("질문하기")),
+    el("p", { class: "tile-date", style: "margin:8px 2px 0",
+      text: "Claude 앱(또는 claude.ai)이 열립니다. 질문이 자동 입력되지 않으면 붙여넣기 하세요 — 질문은 클립보드에 복사됩니다. 개인 자산 정보는 적지 마세요." })));
+
+  // 오늘의 용어 (날짜 기반, 하루 동안 고정)
+  const day = Math.floor((Date.now() + 9 * 3600e3) / 864e5);
+  const today = terms[day % terms.length];
+  root.append(el("h2", { class: "section-title", text: "오늘의 용어" }),
+    el("button", { class: "tile term-today", type: "button", onclick: () => openTerm(today) },
+      el("div", { class: "tile-head" }, el("span", { class: "badge", text: today.cat }), el("span", { class: "tile-label", text: today.en })),
+      el("div", { class: "tile-value", style: "font-size:20px", text: today.term }),
+      el("div", { class: "delta", text: today.short })));
+
+  // 검색 + 분류
+  const search = el("input", { class: "search", type: "search", placeholder: "용어 검색 (예: 듀레이션, CPI)", "aria-label": "용어 검색" });
+  const cats = el("div", { class: "filters", style: "padding:10px 0 0", role: "group", "aria-label": "분류" });
+  const listBox = el("div", { class: "brief-card list" });
+  let cat = "전체";
+  function draw() {
+    const q = search.value.trim().toLowerCase();
+    const rows = terms.filter((t) => (cat === "전체" || t.cat === cat) &&
+      (!q || `${t.term} ${t.en} ${t.short}`.toLowerCase().includes(q)));
+    listBox.replaceChildren(...(rows.length ? rows.map((t) =>
+      el("button", { class: "list-row", type: "button", onclick: () => openTerm(t) },
+        el("span", {}, el("strong", { text: t.term }), el("span", { class: "muted", text: ` ${t.en}` })),
+        el("span", { class: "muted", text: t.cat }))) : [el("p", { class: "note", text: "검색 결과가 없습니다. 위의 'Claude에게 물어보기'를 이용해 보세요." })]));
+  }
+  for (const c of ["전체", ...g.categories]) {
+    cats.append(el("button", { class: "chip", type: "button", "aria-pressed": String(c === cat), text: c,
+      onclick: (e) => { cat = c; cats.querySelectorAll(".chip").forEach((x) => x.setAttribute("aria-pressed", String(x === e.currentTarget))); draw(); } }));
+  }
+  search.addEventListener("input", draw);
+  root.append(el("h2", { class: "section-title", text: `용어사전 (${terms.length})` }), search, cats, listBox,
+    el("p", { class: "note", text: "용어 설명은 일반적인 정의이며, 제도·세율 등은 바뀔 수 있으니 최신 공식 자료로 확인하세요." }));
+  draw();
+}
+
+async function openTerm(t) {
+  const g = await glossary();
+  const byId = Object.fromEntries((g?.terms || []).map((x) => [x.id, x]));
+  const dlg = $("#sheet");
+  const body = $("#sheet-body");
+  $("#sheet-title").textContent = t.term;
+  body.replaceChildren(
+    el("div", { class: "hero-sub", text: `${t.en} · ${t.cat}` }),
+    el("p", { class: "term-short", text: t.short }),
+    el("dl", { class: "meta" },
+      el("dt", { text: "설명" }), el("dd", { text: t.body }),
+      el("dt", { text: "투자자 관점에서" }), el("dd", { text: t.why })),
+  );
+  const series = (t.indicators || []).map((id) => state.data?.series.find((s) => s.id === id)).filter(Boolean);
+  if (series.length) {
+    const row = el("div", { class: "ranges" });
+    for (const s of series) row.append(el("button", { class: "chip", type: "button", text: `${COUNTRY[s.country]} ${s.name} 보기`, onclick: () => openDetail(s) }));
+    body.append(el("dt", { class: "meta-h", text: "관련 지표" }), row);
+  }
+  const rel = (t.related || []).map((id) => byId[id]).filter(Boolean);
+  if (rel.length) {
+    const row = el("div", { class: "ranges" });
+    for (const r of rel) row.append(termChip(r, () => openTerm(r)));
+    body.append(el("dt", { class: "meta-h", text: "함께 보면 좋은 용어" }), row);
+  }
+  body.append(el("button", { class: "update-btn", type: "button", style: "margin-top:20px;width:100%;border:0;cursor:pointer",
+    onclick: () => askClaude(`"${t.term}(${t.en})"에 대해 더 알고 싶어요. 정의, 왜 중요한지, 최근 사례, 투자자가 주의할 점을 알려주세요.`) },
+    document.createTextNode("Claude에게 더 묻기")));
+  if (!dlg.open) dlg.showModal();
+  body.scrollTop = 0; dlg.scrollTop = 0;
+}
+
+async function relatedTermsFor(seriesId) {
+  const g = await glossary();
+  return (g?.terms || []).filter((t) => (t.indicators || []).includes(seriesId));
 }
 
 // ── 이벤트 ──
+const TITLES = { dash: "매크로 지표", brief: "매크로 브리핑", learn: "경제 공부" };
 function setView(view) {
   state.view = view;
   for (const b of document.querySelectorAll(".tabbar button")) b.setAttribute("aria-selected", String(b.dataset.view === view));
-  $("#view-dash").hidden = view !== "dash";
-  $("#view-brief").hidden = view !== "brief";
-  $("#page-title").textContent = view === "dash" ? "매크로 지표" : "매크로 브리핑";
+  for (const v of Object.keys(TITLES)) $(`#view-${v}`).hidden = v !== view;
+  $("#page-title").textContent = TITLES[view];
   if (view === "brief") renderBrief();
+  if (view === "learn") renderLearn();
   window.scrollTo(0, 0);
 }
 
 document.querySelectorAll(".filters .chip").forEach((b) =>
   b.addEventListener("click", () => {
     state.country = b.dataset.country;
-    document.querySelectorAll(".filters .chip").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    document.querySelectorAll("#view-dash .filters .chip").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
     renderDash();
   }));
 document.querySelectorAll(".tabbar button").forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
-$("#refresh").addEventListener("click", () => (state.view === "brief" ? renderBrief() : load(true)));
+$("#refresh").addEventListener("click", () => {
+  if (state.view === "brief") renderBrief();
+  else if (state.view === "learn") { glossaryCache = null; renderLearn(); }
+  else load(true);
+});
 $("#sheet-close").addEventListener("click", () => $("#sheet").close());
 $("#sheet").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
 

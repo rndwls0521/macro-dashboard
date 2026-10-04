@@ -1,6 +1,6 @@
 // 앱 화면 파일은 캐시 우선(오프라인 실행), 데이터(data/*.json)는 네트워크 우선 + 실패 시 캐시.
 // 앱 파일을 바꾸면 VERSION을 올린다.
-const VERSION = "v2";
+const VERSION = "v3";
 const SHELL = `shell-${VERSION}`;
 const DATA = "data";
 const SHELL_FILES = ["./", "index.html", "style.css", "app.js", "manifest.webmanifest",
